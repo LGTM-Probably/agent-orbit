@@ -520,6 +520,10 @@ body:has(#app-root[data-view-mode="window"]) {
   -webkit-app-region: drag;
 }
 
+#app-root[data-view-mode="window"][data-platform="darwin"]:not([data-fullscreen="true"]) #drawer-header {
+  padding: 0 12px 0 78px;
+}
+
 #app-root[data-view-mode="window"][data-fullscreen="true"] #drawer-header {
   padding-right: 12px;
 }
@@ -2283,6 +2287,11 @@ body[data-view-mode="settings"] {
   background: #0d1424;
   border-bottom: 1px solid rgba(148, 163, 184, 0.14);
   -webkit-app-region: drag;
+}
+
+.settings-shell[data-platform="darwin"] .settings-titlebar,
+html[data-platform="darwin"] .settings-titlebar {
+  padding: 0 14px 0 78px;
 }
 
 .settings-titlebar-left {

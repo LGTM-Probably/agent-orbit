@@ -7,12 +7,14 @@ import {
   OrbitSettings,
   clampAnimationSpeed,
   formatAnimationSpeedDescriptor,
+  getPlatformShortcuts,
 } from "../shared/types";
 import {
   AppWindowBounds,
   PersistedDockConfig,
   resolveAnimationSpeed,
   resolveFlashTaskbarOnWaiting,
+  shouldUseNativeWindowShape,
 } from "../main/edgeWindow";
 
 describe("WindowMode & Dual-Mode Contracts", () => {
@@ -198,5 +200,38 @@ describe("WindowMode & Dual-Mode Contracts", () => {
     assert.ok(mockBridge.openSettings);
     assert.ok(mockBridge.updateSettings);
     assert.ok(mockBridge.onWindowState);
+  });
+
+  it("returns platform-specific shortcut labels for darwin vs win32/other", () => {
+    const mac = getPlatformShortcuts("darwin");
+    assert.strictEqual(mac.jumpWaiting, "⌥⇧Space");
+    assert.strictEqual(mac.jumpWaitingKbd, "⌥ + ⇧ + Space");
+    assert.strictEqual(mac.toggleOrbit, "⌥⇧O");
+    assert.strictEqual(mac.toggleOrbitKbd, "⌥ + ⇧ + O");
+    assert.strictEqual(mac.settings, "⌘,");
+    assert.strictEqual(mac.settingsKbd, "⌘ + ,");
+    assert.strictEqual(mac.fullscreen, "⌃⌘F");
+    assert.strictEqual(mac.fullscreenKbd, "⌃ + ⌘ + F");
+    assert.strictEqual(mac.search, "/ or ⌘F");
+
+    const win = getPlatformShortcuts("win32");
+    assert.strictEqual(win.jumpWaiting, "Alt+Shift+Space");
+    assert.strictEqual(win.jumpWaitingKbd, "Alt + Shift + Space");
+    assert.strictEqual(win.toggleOrbit, "Alt+Shift+O");
+    assert.strictEqual(win.toggleOrbitKbd, "Alt + Shift + O");
+    assert.strictEqual(win.settings, "Ctrl+,");
+    assert.strictEqual(win.settingsKbd, "Ctrl + ,");
+    assert.strictEqual(win.fullscreen, "F11");
+    assert.strictEqual(win.fullscreenKbd, "F11");
+    assert.strictEqual(win.search, "/ or Ctrl+F");
+
+    const linux = getPlatformShortcuts("linux");
+    assert.deepStrictEqual(linux, win);
+  });
+
+  it("disables native window shape on darwin and enables it on win32/linux", () => {
+    assert.strictEqual(shouldUseNativeWindowShape("darwin"), false);
+    assert.strictEqual(shouldUseNativeWindowShape("win32"), true);
+    assert.strictEqual(shouldUseNativeWindowShape("linux"), true);
   });
 });

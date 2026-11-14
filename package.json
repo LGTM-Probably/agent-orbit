@@ -18,6 +18,7 @@
     "codex",
     "antigravity",
     "electron",
+    "macos",
     "visualizer",
     "developer-tools",
     "observability"
@@ -25,13 +26,16 @@
   "main": "dist-electron/main/main.js",
   "scripts": {
     "ensure:electron": "node scripts/ensure-electron.js",
+    "build:icons": "node scripts/make-icon.js",
     "build:focus": "node scripts/build-focus-helper.js",
     "build:launcher": "node scripts/build-launcher-exe.js",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
-    "build": "npm run build:focus && npm run build:launcher && npm run build:main && npm run build:renderer",
+    "build": "npm run build:icons && npm run build:focus && npm run build:launcher && npm run build:main && npm run build:renderer",
     "shortcut:desktop": "node scripts/build-launcher-exe.js --install-desktop",
-    "dist": "npm run ensure:electron && npm run build && electron-builder --win --publish never",
+    "dist": "npm run ensure:electron && npm run build && electron-builder --publish never",
+    "dist:win": "npm run ensure:electron && npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run ensure:electron && npm run build && electron-builder --mac --publish never",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.json --noEmit",
     "start": "npm run ensure:electron && npm run build && electron .",
     "verify:tailer": "npm run build:main && node dist-electron/main/verifyTailer.js",
@@ -54,6 +58,14 @@
       "target": [
         "nsis",
         "portable"
+      ]
+    },
+    "mac": {
+      "icon": "assets/orbit.png",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
       ]
     },
     "nsis": {

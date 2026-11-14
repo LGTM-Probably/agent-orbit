@@ -43,6 +43,10 @@ export function resolveAnimationSpeed(
   return clampAnimationSpeed(saved?.animationSpeed);
 }
 
+export function shouldUseNativeWindowShape(platform: string = process.platform): boolean {
+  return platform !== "darwin";
+}
+
 // Scrollbar-safe Spine dimensions (must match CSS .spine)
 const SPINE_THICKNESS = 28;
 const SPINE_LENGTH = 196;
@@ -125,6 +129,11 @@ export class EdgeWindowController {
 
   public attachWindow(win: BrowserWindow): void {
     this.win = win;
+    if (process.platform === "darwin") {
+      try {
+        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      } catch {}
+    }
     this.repositionWindow();
 
     // On startup, if in dock mode, start expanded until user interacts with it so user immediately spots the drawer!
@@ -589,6 +598,7 @@ export class EdgeWindowController {
 
   private applyWindowShape(): void {
     if (!this.win || this.win.isDestroyed()) return;
+    if (!shouldUseNativeWindowShape()) return;
     try {
       const bounds = this.win.getBounds();
       if (!this.attachment.isExpanded && !this.attachment.isDragging) {
@@ -808,9 +818,17 @@ export class EdgeWindowController {
     if (this.currentlyIgnoringMouse === ignore) return;
     this.currentlyIgnoringMouse = ignore;
     if (ignore) {
-      this.win.setIgnoreMouseEvents(true, { forward: true });
+      try {
+        this.win.setIgnoreMouseEvents(true, { forward: true });
+      } catch {
+        try {
+          this.win.setIgnoreMouseEvents(true);
+        } catch {}
+      }
     } else {
-      this.win.setIgnoreMouseEvents(false);
+      try {
+        this.win.setIgnoreMouseEvents(false);
+      } catch {}
     }
   }
 

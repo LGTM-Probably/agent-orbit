@@ -18,6 +18,7 @@ import {
   computeAsteroidProfile,
   computeStarSleepState,
   formatCompactTokens,
+  getPlatformShortcuts,
 } from "../shared/types";
 import { CameraTransform, OrbitCanvasRenderer } from "./canvasRenderer";
 import {
@@ -67,6 +68,18 @@ const windowPills = Array.from(
 );
 const needsYouBarEl = document.getElementById("needs-you-bar") as HTMLDivElement | null;
 
+function detectInitialPlatform(): string {
+  if (typeof navigator !== "undefined") {
+    const navInfo = navigator.platform || navigator.userAgent || "";
+    if (/Mac|iPhone|iPad/i.test(navInfo)) {
+      return "darwin";
+    }
+  }
+  return "win32";
+}
+
+let currentPlatform: string = detectInitialPlatform();
+
 // Instant View Mode Detection from URL query
 const urlParams = new URLSearchParams(window.location.search);
 const urlMode = urlParams.get("mode");
@@ -79,6 +92,7 @@ let currentWindowState: WindowStateInfo = {
   isMaximized: false,
   isFullScreen: false,
   alwaysOnTop: false,
+  platform: currentPlatform,
 };
 
 // Trailing Activity Log elements
@@ -214,9 +228,41 @@ function showFocusToast(msg: string, isError = false): void {
   }, 1500);
 }
 
+function updatePlatformShortcutTooltips(): void {
+  const shortcuts = getPlatformShortcuts(currentPlatform);
+  if (btnFullscreen) {
+    btnFullscreen.title = currentWindowState.isFullScreen
+      ? `Exit Fullscreen (${shortcuts.fullscreen})`
+      : `Fullscreen (${shortcuts.fullscreen})`;
+  }
+  if (btnSettings) {
+    btnSettings.title = `Settings (${shortcuts.settings})`;
+  }
+  if (logSearchInput) {
+    logSearchInput.title = `Filter Activity Log (${shortcuts.search})`;
+  }
+}
+
+function applyPlatform(platform?: string): void {
+  if (platform) {
+    currentPlatform = platform;
+  }
+  rootEl.dataset.platform = currentPlatform;
+  document.documentElement.dataset.platform = currentPlatform;
+  if (settingsShellEl) {
+    settingsShellEl.dataset.platform = currentPlatform;
+  }
+  updatePlatformShortcutTooltips();
+}
+
+applyPlatform(currentPlatform);
+
 function applyWindowState(state: WindowStateInfo): void {
   currentWindowState = state;
   currentViewMode = state.viewMode;
+  if (state.platform) {
+    applyPlatform(state.platform);
+  }
   rootEl.dataset.viewMode = state.viewMode;
   document.documentElement.dataset.viewMode = state.viewMode;
   rootEl.dataset.fullscreen = String(state.isFullScreen);
@@ -231,10 +277,8 @@ function applyWindowState(state: WindowStateInfo): void {
 
   if (btnFullscreen) {
     btnFullscreen.classList.toggle("active", state.isFullScreen);
-    btnFullscreen.title = state.isFullScreen
-      ? "Exit Fullscreen (F11)"
-      : "Fullscreen (F11)";
   }
+  updatePlatformShortcutTooltips();
 
   if (state.viewMode === "window") {
     btnPin.classList.toggle("active", state.alwaysOnTop);
@@ -2036,9 +2080,33 @@ function wireInteractions(): void {
       window.orbitBridge.openSettings();
       return;
     }
-    if (e.key === "F11") {
+    if (
+      e.key === "F11" ||
+      (currentPlatform === "darwin" &&
+        e.ctrlKey &&
+        e.metaKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "f")
+    ) {
       e.preventDefault();
       window.orbitBridge.toggleFullScreen();
+      return;
+    }
+    if (
+      (e.ctrlKey || e.metaKey) &&
+      !(e.ctrlKey && e.metaKey) &&
+      !e.altKey &&
+      !e.shiftKey &&
+      e.key.toLowerCase() === "f"
+    ) {
+      e.preventDefault();
+      if (!isActivityLogOpen) {
+        openActivityLog(null);
+      }
+      if (logSearchInput) {
+        logSearchInput.focus();
+        logSearchInput.select();
+      }
       return;
     }
     if (
@@ -2747,6 +2815,9 @@ async function boot(): Promise<void> {
   });
   window.orbitBridge.onSettingsChanged(settings => {
     engine.setAnimationSpeed(settings.animationSpeed);
+    if (settings.platform) {
+      applyPlatform(settings.platform);
+    }
   });
 
   const init = await window.orbitBridge.getInitialState();

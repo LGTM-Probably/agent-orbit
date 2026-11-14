@@ -20,6 +20,7 @@ export interface WindowStateInfo {
   isMaximized: boolean;
   isFullScreen: boolean;
   alwaysOnTop: boolean;
+  platform?: string;
 }
 
 export type DrawerSizePreset = "compact" | "large" | "xl" | "custom";
@@ -268,6 +269,48 @@ export interface OrbitSettings {
   flashTaskbarOnWaiting: boolean;
   openAtLogin: boolean;
   simActive: boolean;
+  platform?: string;
+}
+
+export interface PlatformShortcuts {
+  jumpWaiting: string;
+  jumpWaitingKbd: string;
+  toggleOrbit: string;
+  toggleOrbitKbd: string;
+  settings: string;
+  settingsKbd: string;
+  fullscreen: string;
+  fullscreenKbd: string;
+  search: string;
+}
+
+export function getPlatformShortcuts(
+  platform: string | undefined = typeof process !== "undefined" ? process.platform : undefined
+): PlatformShortcuts {
+  if (platform === "darwin") {
+    return {
+      jumpWaiting: "⌥⇧Space",
+      jumpWaitingKbd: "⌥ + ⇧ + Space",
+      toggleOrbit: "⌥⇧O",
+      toggleOrbitKbd: "⌥ + ⇧ + O",
+      settings: "⌘,",
+      settingsKbd: "⌘ + ,",
+      fullscreen: "⌃⌘F",
+      fullscreenKbd: "⌃ + ⌘ + F",
+      search: "/ or ⌘F",
+    };
+  }
+  return {
+    jumpWaiting: "Alt+Shift+Space",
+    jumpWaitingKbd: "Alt + Shift + Space",
+    toggleOrbit: "Alt+Shift+O",
+    toggleOrbitKbd: "Alt + Shift + O",
+    settings: "Ctrl+,",
+    settingsKbd: "Ctrl + ,",
+    fullscreen: "F11",
+    fullscreenKbd: "F11",
+    search: "/ or Ctrl+F",
+  };
 }
 
 export interface OrbitBridgeAPI {

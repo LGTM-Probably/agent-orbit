@@ -8,6 +8,7 @@ import {
   OrbitSettings,
   clampAnimationSpeed,
   formatAnimationSpeedDescriptor,
+  getPlatformShortcuts,
 } from "../shared/types";
 
 declare global {
@@ -325,6 +326,19 @@ export function renderSpeedPreviewFrame(
 }
 
 export async function initSettingsView(container: HTMLElement): Promise<void> {
+  const detectFallbackPlatform = (): string => {
+    if (typeof navigator !== "undefined") {
+      const navInfo = navigator.platform || navigator.userAgent || "";
+      if (/Mac|iPhone|iPad/i.test(navInfo)) {
+        return "darwin";
+      }
+    }
+    return "win32";
+  };
+  let currentPlatform = detectFallbackPlatform();
+  container.dataset.platform = currentPlatform;
+  document.documentElement.dataset.platform = currentPlatform;
+
   container.innerHTML = `
     <header class="settings-titlebar">
       <div class="settings-titlebar-left">
@@ -490,8 +504,8 @@ export async function initSettingsView(container: HTMLElement): Promise<void> {
           <div class="settings-card">
             <div class="settings-row">
               <div class="settings-row-info">
-                <div class="settings-row-title">Flash Taskbar When Agent Waits</div>
-                <div class="settings-row-desc">Pulse the Windows taskbar button when an agent stops for your input.</div>
+                <div class="settings-row-title" id="lbl-flash-title">Flash Taskbar When Agent Waits</div>
+                <div class="settings-row-desc" id="lbl-flash-desc">Pulse the Windows taskbar button when an agent stops for your input.</div>
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="chk-flash-taskbar" />
@@ -504,7 +518,7 @@ export async function initSettingsView(container: HTMLElement): Promise<void> {
             <div class="settings-row">
               <div class="settings-row-info">
                 <div class="settings-row-title">Start Automatically at Login</div>
-                <div class="settings-row-desc">Launch Agent Orbit quietly in the background when signing in to Windows.</div>
+                <div class="settings-row-desc" id="lbl-login-desc">Launch Agent Orbit quietly in the background when signing in to Windows.</div>
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="chk-open-login" />
@@ -531,19 +545,19 @@ export async function initSettingsView(container: HTMLElement): Promise<void> {
             <div class="shortcuts-grid">
               <div class="shortcut-item">
                 <span>Jump to waiting agent</span>
-                <kbd>Alt + Shift + Space</kbd>
+                <kbd id="kbd-jump-waiting">Alt + Shift + Space</kbd>
               </div>
               <div class="shortcut-item">
                 <span>Toggle Agent Orbit</span>
-                <kbd>Alt + Shift + O</kbd>
+                <kbd id="kbd-toggle-orbit">Alt + Shift + O</kbd>
               </div>
               <div class="shortcut-item">
                 <span>Open Settings</span>
-                <kbd>Ctrl + ,</kbd>
+                <kbd id="kbd-open-settings">Ctrl + ,</kbd>
               </div>
               <div class="shortcut-item">
                 <span>Toggle Fullscreen</span>
-                <kbd>F11</kbd>
+                <kbd id="kbd-toggle-fullscreen">F11</kbd>
               </div>
               <div class="shortcut-item">
                 <span>Filter Activity Log</span>
@@ -636,7 +650,43 @@ export async function initSettingsView(container: HTMLElement): Promise<void> {
     }
   }
 
+  const lblFlashTitle = container.querySelector<HTMLElement>("#lbl-flash-title")!;
+  const lblFlashDesc = container.querySelector<HTMLElement>("#lbl-flash-desc")!;
+  const lblLoginDesc = container.querySelector<HTMLElement>("#lbl-login-desc")!;
+  const kbdJumpWaiting = container.querySelector<HTMLElement>("#kbd-jump-waiting")!;
+  const kbdToggleOrbit = container.querySelector<HTMLElement>("#kbd-toggle-orbit")!;
+  const kbdOpenSettings = container.querySelector<HTMLElement>("#kbd-open-settings")!;
+  const kbdToggleFullscreen = container.querySelector<HTMLElement>("#kbd-toggle-fullscreen")!;
+
+  function applyPlatformLabels(platform: string): void {
+    currentPlatform = platform;
+    container.dataset.platform = platform;
+    document.documentElement.dataset.platform = platform;
+    const isMac = platform === "darwin";
+    const shortcuts = getPlatformShortcuts(platform);
+
+    lblFlashTitle.textContent = isMac
+      ? "Bounce Dock Icon When Agent Waits"
+      : "Flash Taskbar When Agent Waits";
+    lblFlashDesc.textContent = isMac
+      ? "Bounce the macOS Dock icon and show a badge count when an agent stops for your input."
+      : "Pulse the Windows taskbar button when an agent stops for your input.";
+    lblLoginDesc.textContent = isMac
+      ? "Launch Agent Orbit quietly in the background when signing in to macOS."
+      : "Launch Agent Orbit quietly in the background when signing in to Windows.";
+
+    kbdJumpWaiting.textContent = shortcuts.jumpWaitingKbd;
+    kbdToggleOrbit.textContent = shortcuts.toggleOrbitKbd;
+    kbdOpenSettings.textContent = shortcuts.settingsKbd;
+    kbdToggleFullscreen.textContent = shortcuts.fullscreenKbd;
+  }
+
+  applyPlatformLabels(currentPlatform);
+
   function applySettingsToControls(s: OrbitSettings): void {
+    if (s.platform) {
+      applyPlatformLabels(s.platform);
+    }
     updateSpeedUI(s.animationSpeed);
 
     for (const btn of segViewModeBtns) {

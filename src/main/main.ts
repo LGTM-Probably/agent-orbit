@@ -1,4 +1,14 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, nativeImage, screen, shell, Tray } from "electron";
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  screen,
+  shell,
+  Tray,
+} from "electron";
 import fs from "fs";
 import path from "path";
 import {
@@ -70,10 +80,17 @@ function getAmberBadgeImage(): Electron.NativeImage {
       }
       if (alpha > 0) {
         const offset = (y * width + x) * 4;
-        buf[offset + 0] = Math.round(11 * alpha);  // B
-        buf[offset + 1] = Math.round(158 * alpha); // G
-        buf[offset + 2] = Math.round(245 * alpha); // R
-        buf[offset + 3] = Math.round(255 * alpha); // A
+        if (process.platform === "darwin") {
+          buf[offset + 0] = Math.round(245 * alpha); // R
+          buf[offset + 1] = Math.round(158 * alpha); // G
+          buf[offset + 2] = Math.round(11 * alpha);  // B
+          buf[offset + 3] = Math.round(255 * alpha); // A
+        } else {
+          buf[offset + 0] = Math.round(11 * alpha);  // B
+          buf[offset + 1] = Math.round(158 * alpha); // G
+          buf[offset + 2] = Math.round(245 * alpha); // R
+          buf[offset + 3] = Math.round(255 * alpha); // A
+        }
       }
     }
   }
@@ -85,6 +102,134 @@ const graphStore = new GraphStore();
 const tailer = new TranscriptTailer(graphStore);
 const simulator = new SwarmSimulator(graphStore);
 
+function resolveWindowIconPath(): string | undefined {
+  const assetsDir = path.resolve(__dirname, "../../assets");
+  const candidates =
+    process.platform === "win32"
+      ? [path.join(assetsDir, "orbit.ico"), path.join(assetsDir, "orbit.png")]
+      : [path.join(assetsDir, "orbit.png"), path.join(assetsDir, "orbit.ico")];
+  return candidates.find(p => fs.existsSync(p));
+}
+
+function getTitleBarOptions(): Partial<Electron.BrowserWindowConstructorOptions> {
+  if (process.platform === "darwin") {
+    return {
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 12, y: 11 },
+    };
+  }
+  return {
+    frame: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#0d1424",
+      symbolColor: "#cbd5e1",
+      height: 38,
+    },
+  };
+}
+
+function showWindowReliable(win: BrowserWindow): void {
+  if (process.platform === "win32") {
+    // First ShowWindow call on Win32 consumes STARTUPINFO.wShowWindow=SW_HIDE;
+    // cycling show -> hide -> show forces Win32 WS_VISIBLE=true!
+    win.show();
+    win.hide();
+    win.show();
+  } else {
+    win.show();
+  }
+}
+
+function toggleMainFullScreen(): void {
+  if (activeMode === "dock") {
+    switchViewMode("window");
+    appWindow?.setFullScreen(true);
+  } else if (appWindow && !appWindow.isDestroyed()) {
+    appWindow.setFullScreen(!appWindow.isFullScreen());
+  }
+}
+
+function openActivityLogInActiveWindow(): void {
+  const targetWin = activeMode === "window" ? appWindow : dockWindow;
+  if (activeMode === "window" && appWindow && !appWindow.isDestroyed()) {
+    if (appWindow.isMinimized()) appWindow.restore();
+    appWindow.show();
+    appWindow.focus();
+  } else if (activeMode === "dock") {
+    edgeController?.setPinned(true);
+  }
+  if (targetWin && !targetWin.isDestroyed()) {
+    targetWin.webContents.send("orbit:open-log", undefined);
+  }
+}
+
+function installMacApplicationMenu(): void {
+  if (process.platform !== "darwin") return;
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: "Agent Orbit",
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        {
+          label: "Settings…",
+          accelerator: "CmdOrCtrl+,",
+          click: () => openSettingsWindow(),
+        },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        {
+          label: "Quit Agent Orbit",
+          accelerator: "CmdOrCtrl+Q",
+          click: () => app.quit(),
+        },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        {
+          label: "Toggle Fullscreen",
+          accelerator: "Ctrl+Command+F",
+          click: () => toggleMainFullScreen(),
+        },
+        {
+          label: "View Activity Log",
+          click: () => openActivityLogInActiveWindow(),
+        },
+      ],
+    },
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        { type: "separator" },
+        { role: "front" },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function getWindowState(): WindowStateInfo {
   const isMax = appWindow && !appWindow.isDestroyed() ? appWindow.isMaximized() : false;
   const isFull = appWindow && !appWindow.isDestroyed() ? appWindow.isFullScreen() : false;
@@ -94,6 +239,7 @@ function getWindowState(): WindowStateInfo {
     isMaximized: isMax,
     isFullScreen: isFull,
     alwaysOnTop,
+    platform: process.platform,
   };
 }
 
@@ -101,6 +247,27 @@ function updateAppWindowTaskbarState(nodes: AgentNodeSnapshot[]): void {
   const waitingNodes = nodes.filter(n => !n.isSubagent && n.status === "waiting_on_user");
   const hasNewlyWaiting = waitingNodes.some(n => !lastWaitingIds.has(n.id));
   lastWaitingIds = new Set(waitingNodes.map(n => n.id));
+  const allowFlash = Boolean(edgeController?.getFlashTaskbarOnWaiting());
+
+  if (process.platform === "darwin") {
+    if (waitingNodes.length !== lastOverlayWaitingCount) {
+      lastOverlayWaitingCount = waitingNodes.length;
+      try {
+        app.dock?.setBadge(waitingNodes.length > 0 ? String(waitingNodes.length) : "");
+      } catch {}
+    }
+    if (
+      allowFlash &&
+      hasNewlyWaiting &&
+      !isCaptureMode &&
+      (!appWindow || appWindow.isDestroyed() || !appWindow.isFocused())
+    ) {
+      try {
+        app.dock?.bounce("informational");
+      } catch {}
+    }
+    return;
+  }
 
   if (!appWindow || appWindow.isDestroyed() || process.platform !== "win32") {
     return;
@@ -120,7 +287,6 @@ function updateAppWindowTaskbarState(nodes: AgentNodeSnapshot[]): void {
     } catch {}
   }
 
-  const allowFlash = Boolean(edgeController?.getFlashTaskbarOnWaiting());
   if (!allowFlash || waitingNodes.length === 0) {
     isFlashingFrame = false;
     try {
@@ -162,12 +328,11 @@ function getOrbitSettings(): OrbitSettings {
   const appRoot = path.resolve(__dirname, "../..");
   let openAtLogin = false;
   try {
-    openAtLogin = Boolean(
-      app.getLoginItemSettings({
-        path: process.execPath,
-        args: [appRoot],
-      }).openAtLogin
-    );
+    const loginOpts =
+      process.platform === "darwin" || app.isPackaged
+        ? undefined
+        : { path: process.execPath, args: [appRoot] };
+    openAtLogin = Boolean(app.getLoginItemSettings(loginOpts).openAtLogin);
   } catch {}
 
   const simActive = graphStore.getSnapshot(Date.now(), {
@@ -185,6 +350,7 @@ function getOrbitSettings(): OrbitSettings {
     flashTaskbarOnWaiting: Boolean(edgeController?.getFlashTaskbarOnWaiting()),
     openAtLogin,
     simActive,
+    platform: process.platform,
   };
 }
 
@@ -222,7 +388,7 @@ function openSettingsWindow(): void {
     return;
   }
 
-  const iconPath = path.resolve(__dirname, "../../assets/orbit.ico");
+  const iconPath = resolveWindowIconPath();
   const primaryWa = screen.getPrimaryDisplay().workArea;
   const winW = Math.min(760, Math.max(620, primaryWa.width - 80));
   const winH = Math.min(620, Math.max(460, primaryWa.height - 80));
@@ -240,7 +406,7 @@ function openSettingsWindow(): void {
 
   settingsWindow = new BrowserWindow({
     title: "Agent Orbit — Settings",
-    ...(fs.existsSync(iconPath) ? { icon: iconPath } : {}),
+    ...(iconPath ? { icon: iconPath } : {}),
     show: false,
     x: startX,
     y: startY,
@@ -248,15 +414,9 @@ function openSettingsWindow(): void {
     height: winH,
     minWidth: 620,
     minHeight: 460,
-    frame: false,
     transparent: false,
     backgroundColor: "#0a0f1b",
-    titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: "#0d1424",
-      symbolColor: "#cbd5e1",
-      height: 38,
-    },
+    ...getTitleBarOptions(),
     autoHideMenuBar: true,
     resizable: true,
     movable: true,
@@ -274,7 +434,9 @@ function openSettingsWindow(): void {
     },
   });
 
-  settingsWindow.setMenu(null);
+  if (process.platform !== "darwin") {
+    settingsWindow.setMenu(null);
+  }
   hardenWindowSecurity(settingsWindow);
   settingsWindow.on("page-title-updated", e => e.preventDefault());
 
@@ -287,9 +449,7 @@ function openSettingsWindow(): void {
 
   settingsWindow.webContents.once("did-finish-load", () => {
     if (!settingsWindow || settingsWindow.isDestroyed()) return;
-    settingsWindow.show();
-    settingsWindow.hide();
-    settingsWindow.show();
+    showWindowReliable(settingsWindow);
     settingsWindow.focus();
   });
 
@@ -363,10 +523,10 @@ function createDockWindow(): BrowserWindow {
   }
 
   const initAtt = edgeController!.getAttachment();
-  const iconPath = path.resolve(__dirname, "../../assets/orbit.ico");
+  const iconPath = resolveWindowIconPath();
   dockWindow = new BrowserWindow({
     title: "",
-    ...(fs.existsSync(iconPath) ? { icon: iconPath } : {}),
+    ...(iconPath ? { icon: iconPath } : {}),
     show: false,
     width: initAtt.drawerWidth,
     height: initAtt.drawerHeight,
@@ -392,7 +552,9 @@ function createDockWindow(): BrowserWindow {
     },
   });
 
-  dockWindow.setMenu(null);
+  if (process.platform !== "darwin") {
+    dockWindow.setMenu(null);
+  }
   hardenWindowSecurity(dockWindow);
   dockWindow.on("page-title-updated", e => e.preventDefault());
   dockWindow.on("blur", () => {
@@ -418,9 +580,7 @@ function createDockWindow(): BrowserWindow {
   dockWindow.webContents.once("did-finish-load", () => {
     if (!dockWindow || dockWindow.isDestroyed()) return;
     if (activeMode === "dock") {
-      dockWindow.show();
-      dockWindow.hide();
-      dockWindow.show();
+      showWindowReliable(dockWindow);
       dockWindow.setAlwaysOnTop(true, "screen-saver");
       dockWindow.moveTop();
       edgeController?.reapplyBoundsAndShow();
@@ -447,12 +607,12 @@ function createAppWindow(): BrowserWindow {
   lastOverlayWaitingCount = -1;
   isFlashingFrame = false;
 
-  const iconPath = path.resolve(__dirname, "../../assets/orbit.ico");
+  const iconPath = resolveWindowIconPath();
   const initialBounds = edgeController!.getAppWindowBounds();
 
   appWindow = new BrowserWindow({
     title: "Agent Orbit",
-    ...(fs.existsSync(iconPath) ? { icon: iconPath } : {}),
+    ...(iconPath ? { icon: iconPath } : {}),
     show: false,
     x: initialBounds.x,
     y: initialBounds.y,
@@ -460,15 +620,9 @@ function createAppWindow(): BrowserWindow {
     height: initialBounds.height,
     minWidth: 520,
     minHeight: 420,
-    frame: false,
     transparent: false,
     backgroundColor: "#0a0f1b",
-    titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: "#0d1424",
-      symbolColor: "#cbd5e1",
-      height: 38,
-    },
+    ...getTitleBarOptions(),
     autoHideMenuBar: true,
     resizable: true,
     movable: true,
@@ -486,7 +640,9 @@ function createAppWindow(): BrowserWindow {
     },
   });
 
-  appWindow.setMenu(null);
+  if (process.platform !== "darwin") {
+    appWindow.setMenu(null);
+  }
   hardenWindowSecurity(appWindow);
   appWindow.on("page-title-updated", e => e.preventDefault());
 
@@ -502,11 +658,7 @@ function createAppWindow(): BrowserWindow {
       appWindow.flashFrame(false);
     } catch {}
     if (activeMode === "window") {
-      // First ShowWindow call on Win32 consumes STARTUPINFO.wShowWindow=SW_HIDE;
-      // cycling show -> hide -> show forces Win32 WS_VISIBLE=true!
-      appWindow.show();
-      appWindow.hide();
-      appWindow.show();
+      showWindowReliable(appWindow);
       if (initialBounds.isMaximized) {
         appWindow.maximize();
       }
@@ -531,7 +683,14 @@ function createAppWindow(): BrowserWindow {
     if (input.type === "keyDown" && (input.control || input.meta) && input.key === ",") {
       event.preventDefault();
       openSettingsWindow();
-    } else if (input.type === "keyDown" && input.key === "F11") {
+    } else if (
+      input.type === "keyDown" &&
+      (input.key === "F11" ||
+        (process.platform === "darwin" &&
+          input.control &&
+          input.meta &&
+          input.key.toLowerCase() === "f"))
+    ) {
       event.preventDefault();
       appWindow?.setFullScreen(!appWindow.isFullScreen());
     } else if (input.type === "keyDown" && input.key === "Escape" && appWindow?.isFullScreen()) {
@@ -893,11 +1052,11 @@ function setupAutomationHooks(): void {
       edgeController?.setPinned(true);
       setTimeout(() => {
         try {
-          if (dockWindow && !dockWindow.isDestroyed()) {
-            const hwndBuf = dockWindow.getNativeWindowHandle();
-            const hwnd = hwndBuf.readBigInt64LE(0).toString();
+          if (process.platform === "win32" && dockWindow && !dockWindow.isDestroyed()) {
             const focusExe = path.resolve(__dirname, "../../assets/orbit-focus.exe");
             if (fs.existsSync(focusExe)) {
+              const hwndBuf = dockWindow.getNativeWindowHandle();
+              const hwnd = hwndBuf.readBigInt64LE(0).toString();
               const { execFileSync } = require("child_process");
               const rgnOut = execFileSync(focusExe, ["--check-rgn", hwnd], { encoding: "utf8" }).trim();
               console.log(`SMOKE_RGN hwnd=${hwnd} ${rgnOut}`);
@@ -961,14 +1120,7 @@ function createWindows(): void {
     getAppWindow: () => appWindow,
     onSwitchMode: (mode, dockEdge) => switchViewMode(mode, dockEdge),
     onToggleFullScreen: () => {
-      if (activeMode === "dock") {
-        switchViewMode("window");
-        appWindow?.setFullScreen(true);
-      } else {
-        if (appWindow && !appWindow.isDestroyed()) {
-          appWindow.setFullScreen(!appWindow.isFullScreen());
-        }
-      }
+      toggleMainFullScreen();
     },
     onToggleAppAlwaysOnTop: () => {
       if (appWindow && !appWindow.isDestroyed()) {
@@ -984,17 +1136,7 @@ function createWindows(): void {
       openSettingsWindow();
     },
     onOpenLog: () => {
-      const targetWin = activeMode === "window" ? appWindow : dockWindow;
-      if (activeMode === "window" && appWindow && !appWindow.isDestroyed()) {
-        if (appWindow.isMinimized()) appWindow.restore();
-        appWindow.show();
-        appWindow.focus();
-      } else if (activeMode === "dock") {
-        edgeController?.setPinned(true);
-      }
-      if (targetWin && !targetWin.isDestroyed()) {
-        targetWin.webContents.send("orbit:open-log", undefined);
-      }
+      openActivityLogInActiveWindow();
     },
     onFocusAppWindow: () => {
       if (appWindow && !appWindow.isDestroyed()) {
@@ -1125,11 +1267,15 @@ ipcMain.handle("orbit:update-settings", (_e, patch: Partial<OrbitSettings>) => {
   if (typeof patch.openAtLogin === "boolean") {
     const appRoot = path.resolve(__dirname, "../..");
     try {
-      app.setLoginItemSettings({
-        openAtLogin: patch.openAtLogin,
-        path: process.execPath,
-        args: [appRoot],
-      });
+      if (process.platform === "darwin" || app.isPackaged) {
+        app.setLoginItemSettings({ openAtLogin: patch.openAtLogin });
+      } else {
+        app.setLoginItemSettings({
+          openAtLogin: patch.openAtLogin,
+          path: process.execPath,
+          args: [appRoot],
+        });
+      }
     } catch {}
   }
 
@@ -1151,14 +1297,7 @@ ipcMain.handle("orbit:set-view-mode", (_e, mode: AppViewMode, dockEdge?: EdgeSid
 });
 
 ipcMain.handle("orbit:toggle-fullscreen", () => {
-  if (activeMode === "dock") {
-    switchViewMode("window");
-    appWindow?.setFullScreen(true);
-  } else {
-    if (appWindow && !appWindow.isDestroyed()) {
-      appWindow.setFullScreen(!appWindow.isFullScreen());
-    }
-  }
+  toggleMainFullScreen();
 });
 
 ipcMain.handle("orbit:set-pinned", (event, pinned: boolean) => {
@@ -1209,14 +1348,7 @@ ipcMain.handle("orbit:show-menu", (event, nodeId?: string) => {
     targetNodeId: typeof nodeId === "string" ? nodeId : undefined,
     onSwitchMode: (mode, dockEdge) => switchViewMode(mode, dockEdge),
     onToggleFullScreen: () => {
-      if (activeMode === "dock") {
-        switchViewMode("window");
-        appWindow?.setFullScreen(true);
-      } else {
-        if (appWindow && !appWindow.isDestroyed()) {
-          appWindow.setFullScreen(!appWindow.isFullScreen());
-        }
-      }
+      toggleMainFullScreen();
     },
     onToggleAppAlwaysOnTop: () => {
       if (appWindow && !appWindow.isDestroyed()) {
@@ -1411,6 +1543,9 @@ async function init(): Promise<void> {
   }
 
   await app.whenReady();
+  if (process.platform === "darwin") {
+    installMacApplicationMenu();
+  }
   if (!isCaptureMode) {
     try {
       globalShortcut.register("Alt+Shift+Space", () => {
@@ -1447,6 +1582,18 @@ app.on("second-instance", (_event, argv) => {
     } else {
       edgeController?.setPinned(true);
     }
+  }
+});
+
+app.on("activate", () => {
+  if (!edgeController) return;
+  if (activeMode === "window") {
+    const win = createAppWindow();
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  } else {
+    edgeController.setPinned(true);
   }
 });
 
