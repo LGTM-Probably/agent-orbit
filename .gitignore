@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build & packaging outputs
+dist-electron/
+dist-renderer/
+release/
+
+# Compiled Win32 helper & launcher binaries (rebuilt via npm run build)
+*.exe
+*.pdb
+*.lnk
+*.path
+
+# Logs & OS metadata
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

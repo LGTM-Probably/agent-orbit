@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self';"
+    />
+    <title>Agent Orbit</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-view-mode="window">
+    <div id="app-root" data-edge="right" data-expanded="false" data-dragging="false" data-view-mode="window" data-fullscreen="false" data-maximized="false">
+      <!-- Compact Scrollbar-Safe Edge Spine (visible when tucked in dock mode) -->
+      <div id="edge-spine" title="Spine">
+        <div id="spine-grip" class="drag-trigger" title="Drag">⠿</div>
+        <div id="spine-dots"></div>
+        <div id="spine-count">0</div>
+      </div>
+
+      <!-- Magnetic Drag Guide Banner -->
+      <div id="drag-banner"><span id="drag-edge-label">right</span></div>
+
+      <!-- Slide-Out Bouncy Node Graph Drawer / App Window Frame -->
+      <div id="drawer-panel">
+        <!-- Interactive Edge & Corner Drag-to-Resize Handles -->
+        <div class="resize-handle rh-left" data-resize="left"></div>
+        <div class="resize-handle rh-right" data-resize="right"></div>
+        <div class="resize-handle rh-top" data-resize="top"></div>
+        <div class="resize-handle rh-bottom" data-resize="bottom"></div>
+        <div class="resize-handle rh-top-left" data-resize="top-left"></div>
+        <div class="resize-handle rh-bottom-left" data-resize="bottom-left"></div>
+        <div class="resize-handle rh-top-right" data-resize="top-right"></div>
+        <div class="resize-handle rh-bottom-right" data-resize="bottom-right"></div>
+
+        <header id="drawer-header">
+          <div class="brand-group drag-trigger" title="Agent Orbit">
+            <span class="grip-glyph">⠿</span>
+            <span class="brand-dot"></span>
+            <span class="brand-title">Agent Orbit</span>
+          </div>
+
+          <div class="window-pills" role="tablist" aria-label="Time window">
+            <button class="win-pill" data-mode="live">Live</button>
+            <button class="win-pill active" data-mode="30m">30m</button>
+            <button class="win-pill" data-mode="4h">4h</button>
+            <button class="win-pill" data-mode="24h">24h</button>
+          </div>
+
+          <div id="needs-you-bar" class="needs-you-bar hidden" role="region" aria-label="Agents waiting on you"></div>
+
+          <div class="header-actions">
+            <button id="btn-fit" class="icon-btn" title="Reset view">⌖</button>
+            <button id="btn-dock-mode" class="header-mode-btn" title="Dock">◫ Dock</button>
+            <button id="btn-app-mode" class="icon-btn" title="Window">❐</button>
+            <button id="btn-fullscreen" class="icon-btn" title="Fullscreen (F11)">⛶</button>
+            <button id="btn-size" class="icon-btn" title="Size">⤢</button>
+            <button id="btn-clear-sim" class="icon-btn hidden" title="Clear simulation">✕</button>
+            <button id="btn-log" class="icon-btn" title="Activity Log">📜</button>
+            <button id="btn-pin" class="icon-btn" title="Pin">📌</button>
+            <button id="btn-settings" class="icon-btn" title="Settings (Ctrl+,)">⚙</button>
+          </div>
+        </header>
+
+        <main id="workspace-body">
+          <div id="canvas-stage">
+            <canvas id="orbit-canvas"></canvas>
+
+            <!-- Rich Hover Inspector Card -->
+            <div id="hover-card" class="hidden"></div>
+
+            <!-- Focus Window Switch Toast -->
+            <div id="focus-toast" class="focus-toast hidden" aria-live="polite"></div>
+          </div>
+
+          <!-- Smooth Split Resizer for Wide / App / Fullscreen Mode -->
+          <div id="split-resizer" class="split-resizer hidden" title="Resize log"></div>
+
+          <!-- Trailing Activity Log Panel -->
+          <div id="activity-log-panel" class="activity-log-panel hidden" aria-label="Trailing Activity Log">
+            <div class="log-header">
+              <div class="log-header-left">
+                <span class="log-live-dot" title="Live"></span>
+                <span id="log-scope-pill" class="log-scope-pill">All Agents</span>
+              </div>
+              <div class="log-header-actions">
+                <button id="btn-log-scope-all" class="log-btn-pill hidden" title="All agents">All</button>
+                <button id="log-wrap-btn" class="log-btn-pill" title="Wrap">Wrap</button>
+                <button id="btn-log-expand" class="log-icon-btn" title="Expand log">⤢</button>
+                <button id="btn-log-close" class="log-icon-btn" title="Close log">✕</button>
+              </div>
+            </div>
+            <div id="log-category-bar" class="log-category-bar" role="toolbar" aria-label="Category filters">
+              <button class="log-cat-pill active" data-cat="all" title="All">All</button>
+              <button class="log-cat-pill" data-cat="code" title="Code">Code</button>
+              <button class="log-cat-pill" data-cat="verify" title="Test &amp; Build">Test &amp; Build</button>
+              <button class="log-cat-pill" data-cat="git" title="Git">Git</button>
+              <button class="log-cat-pill" data-cat="explore" title="Search &amp; Read">Search &amp; Read</button>
+              <button class="log-cat-pill" data-cat="agents" title="Agents &amp; Replies">Agents &amp; Replies</button>
+              <button class="log-cat-pill cat-errors zero" data-cat="errors" title="Errors">Errors<span class="cat-err-badge hidden">0</span></button>
+              <div class="log-search-wrap">
+                <input id="log-search-input" class="log-search-input" type="text" placeholder="/ Filter…" spellcheck="false" autocomplete="off" />
+                <button id="log-search-clear" class="log-search-clear hidden" type="button" title="Clear">✕</button>
+              </div>
+            </div>
+            <div id="log-body" class="log-body">
+              <div id="log-list" class="log-list"></div>
+              <div id="log-empty" class="log-empty">Quiet</div>
+            </div>
+            <button id="log-jump-live" class="log-jump-live hidden" title="Jump to live">↓ Live</button>
+          </div>
+        </main>
+
+        <footer id="drawer-footer">
+          <div id="harness-summary" class="footer-left" tabindex="0"></div>
+          <div id="footer-harness-legend" class="footer-legend" role="toolbar" aria-label="Harness filters">
+            <span class="leg leg-claude zero" data-harness="claude" role="button" tabindex="0" title="Claude"><i style="background:#f2845c"></i><span>Claude</span><b class="leg-count"></b></span>
+            <span class="leg leg-codex zero" data-harness="codex" role="button" tabindex="0" title="Codex"><i style="background:#3dd6a3"></i><span>Codex</span><b class="leg-count"></b></span>
+            <span class="leg leg-antigravity zero" data-harness="antigravity" role="button" tabindex="0" title="Antigravity"><i style="background:#9580ff"></i><span>Antigravity</span><b class="leg-count"></b></span>
+            <span class="leg leg-strata zero" data-harness="strata" role="button" tabindex="0" title="Strata"><i style="background:#38bdf8"></i><span>Strata</span><b class="leg-count"></b></span>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <div id="settings-shell" class="settings-shell hidden" aria-label="Settings"></div>
+
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>

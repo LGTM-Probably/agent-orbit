@@ -1,0 +1,74 @@
+{
+  "name": "agent-orbit",
+  "version": "0.2.0",
+  "description": "Zero-context-overhead 2D cosmic visualizer and live activity monitor for Claude Code, Codex, Antigravity, and Strata coding agents",
+  "license": "MIT",
+  "author": "Agent Orbit Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LGTM-Probably/agent-orbit.git"
+  },
+  "homepage": "https://github.com/LGTM-Probably/agent-orbit#readme",
+  "bugs": {
+    "url": "https://github.com/LGTM-Probably/agent-orbit/issues"
+  },
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "antigravity",
+    "electron",
+    "visualizer",
+    "developer-tools",
+    "observability"
+  ],
+  "main": "dist-electron/main/main.js",
+  "scripts": {
+    "ensure:electron": "node scripts/ensure-electron.js",
+    "build:focus": "node scripts/build-focus-helper.js",
+    "build:launcher": "node scripts/build-launcher-exe.js",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:focus && npm run build:launcher && npm run build:main && npm run build:renderer",
+    "shortcut:desktop": "node scripts/build-launcher-exe.js --install-desktop",
+    "dist": "npm run ensure:electron && npm run build && electron-builder --win --publish never",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.json --noEmit",
+    "start": "npm run ensure:electron && npm run build && electron .",
+    "verify:tailer": "npm run build:main && node dist-electron/main/verifyTailer.js",
+    "test": "npm run build:main && node --test dist-electron/test/*.js"
+  },
+  "build": {
+    "appId": "dev.agentorbit.desktop",
+    "productName": "Agent Orbit",
+    "files": [
+      "dist-electron/**/*",
+      "dist-renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "assets/**"
+    ],
+    "win": {
+      "icon": "assets/orbit.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.2.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.8"
+  }
+}
