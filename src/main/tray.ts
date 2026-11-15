@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, nativeImage, Tray } from "electron";
 import fs from "fs";
 import path from "path";
-import { AppViewMode, EdgeSide, HarnessKind } from "../shared/types";
+import { AppViewMode, EdgeSide, HarnessKind, getPlatformShortcuts } from "../shared/types";
 import { EdgeWindowController } from "./edgeWindow";
 import { GraphStore } from "./graphStore";
 import { SwarmSimulator } from "./simulator";
@@ -107,6 +107,7 @@ export function buildOrbitContextMenu(
   }
 
   const viewMode = options.activeMode ?? edgeCtrl.getViewMode();
+  const shortcuts = getPlatformShortcuts(process.platform);
 
   template.push(
     {
@@ -114,7 +115,7 @@ export function buildOrbitContextMenu(
       enabled: false,
     },
     {
-      label: "Jump to Waiting Agent (Alt+Shift+Space)",
+      label: `Jump to Waiting Agent (${shortcuts.jumpWaiting})`,
       click: () => {
         options.onJumpWaiting?.();
       },
@@ -135,7 +136,7 @@ export function buildOrbitContextMenu(
   if (viewMode === "window") {
     template.push(
       {
-        label: "Toggle Fullscreen (F11)",
+        label: `Toggle Fullscreen (${shortcuts.fullscreen})`,
         click: () => {
           options.onToggleFullScreen?.();
           onMenuUpdated?.();
@@ -170,7 +171,7 @@ export function buildOrbitContextMenu(
 
   template.push(
     {
-      label: "Toggle Agent Orbit (Alt+Shift+O)",
+      label: `Toggle Agent Orbit (${shortcuts.toggleOrbit})`,
       click: () => {
         options.onToggleOrbit?.();
         onMenuUpdated?.();
@@ -194,16 +195,38 @@ export function buildOrbitContextMenu(
   return Menu.buildFromTemplate(template);
 }
 
+function resolveTrayIcon(): Electron.NativeImage {
+  const assetsDir = path.resolve(__dirname, "../../assets");
+  if (process.platform === "darwin") {
+    const trayPng = path.join(assetsDir, "orbit-tray.png");
+    if (fs.existsSync(trayPng)) {
+      return nativeImage.createFromPath(trayPng);
+    }
+    const appPng = path.join(assetsDir, "orbit.png");
+    if (fs.existsSync(appPng)) {
+      return nativeImage.createFromPath(appPng).resize({ width: 18, height: 18 });
+    }
+    return buildOrbitTrayIcon();
+  }
+
+  const icoPath = path.join(assetsDir, "orbit.ico");
+  if (fs.existsSync(icoPath)) {
+    return nativeImage.createFromPath(icoPath);
+  }
+  const appPng = path.join(assetsDir, "orbit.png");
+  if (fs.existsSync(appPng)) {
+    return nativeImage.createFromPath(appPng).resize({ width: 18, height: 18 });
+  }
+  return buildOrbitTrayIcon();
+}
+
 export function createOrbitTray(
   edgeCtrl: EdgeWindowController,
   simulator: SwarmSimulator,
   graphStore?: GraphStore,
   stateProvider?: TrayStateProvider
 ): Tray {
-  const icoPath = path.resolve(__dirname, "../../assets/orbit.ico");
-  const icon = fs.existsSync(icoPath)
-    ? nativeImage.createFromPath(icoPath)
-    : buildOrbitTrayIcon();
+  const icon = resolveTrayIcon();
   const tray = new Tray(icon);
   tray.setToolTip("Agent Orbit — Passive Agent Visualizer");
 
@@ -254,12 +277,20 @@ function buildOrbitTrayIcon(): Electron.NativeImage {
 
   const setPx = (x: number, y: number, r: number, g: number, b: number, a: number) => {
     if (x < 0 || x >= size || y < 0 || y >= size) return;
-    // BGRA byte order on Windows for createFromBitmap
     const idx = (y * size + x) * 4;
-    buf[idx] = b;
-    buf[idx + 1] = g;
-    buf[idx + 2] = r;
-    buf[idx + 3] = a;
+    if (process.platform === "darwin") {
+      // RGBA byte order on macOS for createFromBitmap
+      buf[idx] = r;
+      buf[idx + 1] = g;
+      buf[idx + 2] = b;
+      buf[idx + 3] = a;
+    } else {
+      // BGRA byte order on Windows/Linux for createFromBitmap
+      buf[idx] = b;
+      buf[idx + 1] = g;
+      buf[idx + 2] = r;
+      buf[idx + 3] = a;
+    }
   };
 
   const cx = 7.5;

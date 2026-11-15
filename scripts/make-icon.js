@@ -1,5 +1,74 @@
 const fs = require("fs");
 const path = require("path");
+const zlib = require("zlib");
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) !== 0 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function makePngChunk(type, data) {
+  const typeBuf = Buffer.from(type, "ascii");
+  const lenBuf = Buffer.alloc(4);
+  lenBuf.writeUInt32BE(data.length, 0);
+
+  const crcInput = Buffer.concat([typeBuf, data]);
+  const crcBuf = Buffer.alloc(4);
+  crcBuf.writeUInt32BE(crc32(crcInput), 0);
+
+  return Buffer.concat([lenBuf, typeBuf, data, crcBuf]);
+}
+
+function encodePng(size, rgba) {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr.writeUInt8(8, 8); // bit depth
+  ihdr.writeUInt8(6, 9); // color type RGBA
+  ihdr.writeUInt8(0, 10); // compression
+  ihdr.writeUInt8(0, 11); // filter
+  ihdr.writeUInt8(0, 12); // interlace
+
+  const stride = size * 4;
+  const raw = Buffer.alloc((stride + 1) * size);
+  for (let y = 0; y < size; y++) {
+    const rowStart = y * (stride + 1);
+    raw[rowStart] = 0; // filter type 0 (None)
+    const srcStart = y * stride;
+    Buffer.from(rgba.buffer, rgba.byteOffset + srcStart, stride).copy(raw, rowStart + 1);
+  }
+
+  const compressed = zlib.deflateSync(raw);
+
+  return Buffer.concat([
+    signature,
+    makePngChunk("IHDR", ihdr),
+    makePngChunk("IDAT", compressed),
+    makePngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function createPng(size) {
+  const rgba = renderIconBitmap(size);
+  return encodePng(size, rgba);
+}
 
 function renderIconBitmap(size) {
   const pixels = new Uint8Array(size * size * 4); // RGBA
@@ -186,12 +255,38 @@ function createIco(sizes) {
   return outBuf;
 }
 
-const assetsDir = path.resolve(__dirname, "../assets");
-if (!fs.existsSync(assetsDir)) {
-  fs.mkdirSync(assetsDir, { recursive: true });
+function generateAssets(assetsDir = path.resolve(__dirname, "../assets")) {
+  if (!fs.existsSync(assetsDir)) {
+    fs.mkdirSync(assetsDir, { recursive: true });
+  }
+
+  const icoBuffer = createIco([16, 32, 48, 64]);
+  const icoPath = path.join(assetsDir, "orbit.ico");
+  fs.writeFileSync(icoPath, icoBuffer);
+  console.log(`Generated ${icoPath} (${icoBuffer.length} bytes, sizes: 16, 32, 48, 64)`);
+
+  const pngTargets = [
+    { name: "orbit.png", size: 512 },
+    { name: "orbit-tray.png", size: 18 },
+    { name: "orbit-tray@2x.png", size: 36 },
+  ];
+
+  for (const target of pngTargets) {
+    const pngBuffer = createPng(target.size);
+    const outPath = path.join(assetsDir, target.name);
+    fs.writeFileSync(outPath, pngBuffer);
+    console.log(`Generated ${outPath} (${pngBuffer.length} bytes, ${target.size}x${target.size})`);
+  }
 }
 
-const icoBuffer = createIco([16, 32, 48, 64]);
-const icoPath = path.join(assetsDir, "orbit.ico");
-fs.writeFileSync(icoPath, icoBuffer);
-console.log(`Generated ${icoPath} (${icoBuffer.length} bytes, sizes: 16, 32, 48, 64)`);
+if (require.main === module) {
+  generateAssets();
+}
+
+module.exports = {
+  renderIconBitmap,
+  encodePng,
+  createPng,
+  createIco,
+  generateAssets,
+};
