@@ -112,8 +112,10 @@ export function ingestMyAgentLine(
 - Add the provider's star/corona hex color to `HARNESS_COLORS` in `src/renderer/physics.ts`.
 - Add its count entry in `src/renderer/app.ts` (`harnessCounts`) and a `<span class="leg" data-harness="myagent">` filter pill in `src/renderer/index.html` + `src/main/tray.ts` (`harnessDisplayName`).
 
-### 5. *(Optional)* Add Window-Focus Hints (`scripts/FocusHelper.cs`)
-If your agent runs inside a dedicated desktop app or terminal title pattern on Windows, add its process/window-title scoring rules in `scripts/FocusHelper.cs` so double-clicking its star jumps straight to that window.
+### 5. *(Optional)* Add Window-Focus Hints (`scripts/FocusHelper.cs` & `src/main/windowFocus.ts`)
+If your agent runs inside a dedicated desktop app or a recognizable terminal, add focus hints so double-clicking its star jumps straight to that window:
+- **Windows:** add its process/window-title scoring rules in `scripts/FocusHelper.cs`.
+- **macOS:** add an entry with its app name and process aliases to `MAC_KNOWN_APPS` in `src/main/windowFocus.ts`.
 
 ### 6. Add Adapter Unit Tests (`src/test/telemetry.test.ts` & `src/test/backendFeatures.test.ts`)
 Feed representative `.jsonl` lines directly into `ingestMyAgentLine(ctx, line, store, now, true)` and assert node status transitions, subagent parent linking, token gauges, and semantic badges with `npm test`.
