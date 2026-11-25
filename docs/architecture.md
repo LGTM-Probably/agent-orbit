@@ -17,7 +17,7 @@ flowchart LR
     T["TranscriptTailer<br/>(fs.watch + 64KB byte-offset slices)"]
     AD["Harness Adapters<br/>(claude / codex / antigravity / strata)"]
     GS["GraphStore<br/>(Nodes, Token Gauges, Activity Ring Buffer)"]
-    EW["EdgeWindowController & FocusHelper<br/>(App Window / Dock / Win32 HWND Focus)"]
+    EW["EdgeWindowController & FocusHelper<br/>(App Window / Dock / Win32 + macOS Window Focus)"]
   end
 
   subgraph IPC["Sandboxed Preload IPC"]

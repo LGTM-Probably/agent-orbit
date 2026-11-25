@@ -15,7 +15,7 @@ See all your coding agents at a glance as live visual solar systems, with zero t
 
 ## Quick Start
 
-Requires Windows 10/11 and Node.js 20+.
+Runs on **macOS 12+** and **Windows 10/11**. Requires Node.js 20+.
 
 ```bash
 git clone https://github.com/LGTM-Probably/agent-orbit.git
@@ -24,12 +24,14 @@ npm install
 npm start
 ```
 
+The same commands work on both platforms. See [Platform Setup](docs/guide.md#platform-setup) for macOS permissions and Windows build helpers.
+
 ## Shortcuts
 
 - **Canvas:** Drag to pan, scroll to zoom, and click a star to filter the activity log.
-- **Focus Agent (`Alt+Shift+Space`):** Jump straight to the window of an agent waiting on your input, or double-click any star.
-- **Summon (`Alt+Shift+O`):** Show or minimize Agent Orbit from anywhere.
-- **Search (`/` or `Ctrl+F`):** Filter the live activity log instantly.
+- **Focus Agent (`⌥⇧Space` on macOS, `Alt+Shift+Space` on Windows):** Jump straight to the window of an agent waiting on your input, or double-click any star.
+- **Summon (`⌥⇧O` / `Alt+Shift+O`):** Show or minimize Agent Orbit from anywhere.
+- **Search (`/`, or `⌘F` / `Ctrl+F`):** Filter the live activity log instantly.
 
 ## Documentation
 
