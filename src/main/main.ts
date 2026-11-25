@@ -861,113 +861,107 @@ function setupAutomationHooks(): void {
           await new Promise(r => setTimeout(r, 700));
 
           fs.mkdirSync(outDir, { recursive: true });
-          const totalFrames = 120; // 8.00s @ 15 fps
-          const durationMs = 8000;
+          const fps = 15;
+          const durationMs = 16000;
+          const totalFrames = Math.round((durationMs / 1000) * fps);
           const startPerf = performance.now();
-          let spawnedProbe = false;
-          let zoomedHyperion = false;
-          let triggeredReentry = false;
-          let expandedDiff = false;
-          let postedPr = false;
+
+          const runJs = (js: string) =>
+            appWindow?.webContents.executeJavaScript(js).catch(() => undefined);
+
+          const completeSub = (subId: string, turns: number, durationMs: number, tools: number) => {
+            for (let t = 0; t < turns; t++) {
+              graphStore.recordModelTurn(subId, `demo-turn-${t}`);
+            }
+            // Live completion -> accretion flare + spiral re-entry into the outer belt
+            graphStore.markCompleted(subId, Date.now(), true, {
+              durationMs,
+              subagentToolCount: tools,
+              model: "claude-opus-4-6[1m]",
+            });
+          };
+
+          // Scripted story: spawn a subagent, zoom into the swarm, watch several subagents
+          // finish and deorbit into the outer belt, then zoom out as a session asks a question
+          // and floats up into the "Awaiting You" spotlight lane.
+          const timeline: Array<{ at: number; run: () => void | Promise<unknown> }> = [
+            {
+              at: 600,
+              run: () => {
+                const probeId = `${claudeId}:sub:demo-query-planner`;
+                graphStore.upsertNode({
+                  id: probeId,
+                  rawId: "demo-query-planner",
+                  harness: "claude",
+                  parentId: claudeId,
+                  isSubagent: true,
+                  label: "Query Planner",
+                  isCustomLabel: true,
+                  project: "nebula-gateway",
+                  cwd: "C:/code/nebula-gateway",
+                  model: "claude-opus-4-6",
+                  timestamp: Date.now(),
+                  isSimulated: true,
+                  emitSpawnPulse: true,
+                });
+                graphStore.recordToolStart(probeId, {
+                  callId: "demo-probe-test",
+                  name: "Bash",
+                  target: "npm test -- ShardRouter",
+                  summary: "Run ShardRouter unit suite",
+                  rawCommand: "npm test -- ShardRouter",
+                  timestamp: Date.now(),
+                  isLive: true,
+                });
+              },
+            },
+            {
+              at: 1500,
+              run: () =>
+                runJs(`document.querySelector('.log-agent-chip[data-agent-node-id="${hyperionId}"]')?.click();`),
+            },
+            { at: 2700, run: () => completeSub(`${hyperionId}:sub:1`, 18, 4820, 7) },
+            { at: 3700, run: () => completeSub(`${hyperionId}:sub:5`, 11, 3910, 5) },
+            { at: 4700, run: () => completeSub(`${hyperionId}:sub:9`, 23, 6240, 9) },
+            {
+              at: 6000,
+              run: () => runJs(`document.getElementById('btn-fit')?.click();`),
+            },
+            {
+              at: 7000,
+              run: () => {
+                const askAt = Date.now();
+                graphStore.recordToolEnd(claudeId, {
+                  callId: "claude-tool-active",
+                  durationMs: 4200,
+                  timestamp: askAt,
+                  isLive: true,
+                });
+                graphStore.recordToolStart(claudeId, {
+                  callId: "demo-ask-ship",
+                  name: "AskUserQuestion",
+                  target: "Tests pass. Tag and ship v0.46 now?",
+                  summary: "Tests pass. Tag and ship v0.46 now?",
+                  waitingPrompt: "Tests pass. Tag and ship v0.46 now?",
+                  timestamp: askAt,
+                  isLive: true,
+                });
+                graphStore.recordTurnPhase(claudeId, "waiting_on_user", askAt);
+              },
+            },
+            {
+              at: 12500,
+              run: () => runJs(`document.getElementById('btn-fit')?.click();`),
+            },
+          ];
+          let nextEvent = 0;
 
           for (let i = 0; i < totalFrames; i++) {
-            const targetElapsed = (i * durationMs) / totalFrames;
+            const targetElapsed = (i * 1000) / fps;
 
-            if (!spawnedProbe && targetElapsed >= 700) {
-              spawnedProbe = true;
-              const probeId = `${claudeId}:sub:demo-query-planner`;
-              graphStore.upsertNode({
-                id: probeId,
-                rawId: "demo-query-planner",
-                harness: "claude",
-                parentId: claudeId,
-                isSubagent: true,
-                label: "Query Planner",
-                isCustomLabel: true,
-                project: "nebula-gateway",
-                cwd: "C:/code/nebula-gateway",
-                model: "claude-opus-4-6",
-                timestamp: Date.now(),
-                isSimulated: true,
-                emitSpawnPulse: true,
-              });
-              graphStore.recordToolStart(probeId, {
-                callId: "demo-probe-test",
-                name: "Bash",
-                target: "npm test -- ShardRouter",
-                summary: "Run ShardRouter unit suite",
-                rawCommand: "npm test -- ShardRouter",
-                timestamp: Date.now(),
-                isLive: true,
-              });
-            }
-
-            if (!zoomedHyperion && targetElapsed >= 2100) {
-              zoomedHyperion = true;
-              await appWindow.webContents.executeJavaScript(`
-                (() => {
-                  const chip = document.querySelector('.log-agent-chip[data-agent-node-id="claude:sim-hyperion-star"]');
-                  if (chip) chip.click();
-                })();
-              `);
-            }
-
-            if (!triggeredReentry && targetElapsed >= 3500) {
-              triggeredReentry = true;
-              for (let t = 0; t < 18; t++) {
-                graphStore.recordModelTurn(
-                  "claude:sim-hyperion-star:sub:1",
-                  `demo-turn-${t}`
-                );
-              }
-              // Complete an active subagent on hyperion-cloud in close-up -> Solar Accretion Flare + Spiral Re-Entry!
-              graphStore.markCompleted(
-                "claude:sim-hyperion-star:sub:1",
-                Date.now(),
-                true,
-                {
-                  durationMs: 4820,
-                  subagentToolCount: 7,
-                  model: "claude-opus-4-6[1m]",
-                }
-              );
-            }
-
-            if (!expandedDiff && targetElapsed >= 5200) {
-              expandedDiff = true;
-              await appWindow.webContents.executeJavaScript(`
-                (() => {
-                  const row = document.querySelector('.log-row[data-id="claude:sim-hyperion-star:tool:demo-edit-ratelimit"]');
-                  if (row) {
-                    row.click();
-                    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                  }
-                })();
-              `);
-            }
-
-            if (!postedPr && targetElapsed >= 6700) {
-              postedPr = true;
-              graphStore.recordToolStart(hyperionId, {
-                callId: "demo-pr-412",
-                name: "pr-link",
-                target: "https://github.com/acme-org/hyperion-cloud/pull/412",
-                filePath: "https://github.com/acme-org/hyperion-cloud/pull/412",
-                summary: "https://github.com/acme-org/hyperion-cloud/pull/412",
-                toolInput: JSON.stringify(
-                  { prNumber: 412, repository: "acme-org/hyperion-cloud" },
-                  null,
-                  2
-                ),
-                timestamp: Date.now(),
-                isLive: true,
-              });
-              graphStore.recordToolEnd(hyperionId, {
-                callId: "demo-pr-412",
-                durationMs: 80,
-                timestamp: Date.now(),
-                isLive: true,
-              });
+            while (nextEvent < timeline.length && timeline[nextEvent].at <= targetElapsed) {
+              await timeline[nextEvent].run();
+              nextEvent++;
             }
 
             const nowPerf = performance.now() - startPerf;
@@ -982,7 +976,6 @@ function setupAutomationHooks(): void {
             );
             fs.writeFileSync(frameFile, img.toPNG());
           }
-
           console.log(`DEMO_FRAMES_SAVED ${outDir} count=${totalFrames}`);
         } catch (err) {
           console.error("DEMO_CAPTURE_ERR", err);
@@ -1023,15 +1016,54 @@ function setupAutomationHooks(): void {
       appWindow?.show();
       graphStore.setTimeWindow("30m");
       simulator.spawnCosmicShowcase();
+
+      // Put a second session into the "Awaiting You" lane and land a few finished subagents
+      // in the activity log so the still shows waiting, done and in-flight work together.
+      const claudeId = "claude:sim-claude-star";
+      const hyperionId = "claude:sim-hyperion-star";
+      const nowTs = Date.now();
+      graphStore.recordToolEnd(claudeId, {
+        callId: "claude-tool-active",
+        durationMs: 4200,
+        timestamp: nowTs,
+        isLive: false,
+      });
+      graphStore.recordToolStart(claudeId, {
+        callId: "preview-ask-ship",
+        name: "AskUserQuestion",
+        target: "Tests pass. Tag and ship v0.46 now?",
+        summary: "Tests pass. Tag and ship v0.46 now?",
+        waitingPrompt: "Tests pass. Tag and ship v0.46 now?",
+        timestamp: nowTs,
+        isLive: false,
+      });
+      graphStore.recordTurnPhase(claudeId, "waiting_on_user", nowTs);
+      [
+        { idx: 1, durationMs: 4820, tools: 7 },
+        { idx: 5, durationMs: 3910, tools: 5 },
+      ].forEach(({ idx, durationMs, tools }) => {
+        graphStore.markCompleted(`${hyperionId}:sub:${idx}`, nowTs, false, {
+          durationMs,
+          subagentToolCount: tools,
+          model: "claude-opus-4-6[1m]",
+        });
+      });
+
       setTimeout(async () => {
         try {
           if (appWindow && !appWindow.isDestroyed()) {
+            // Split view: activity log on the right, close-up of the Hyperion swarm on the left
             await appWindow.webContents.executeJavaScript(`
-              document.getElementById('btn-log-close')?.click();
-              window.dispatchEvent(new Event('resize'));
-              document.getElementById('btn-fit')?.click();
+              (() => {
+                const panel = document.getElementById('activity-log-panel');
+                if (panel && panel.classList.contains('hidden')) {
+                  document.getElementById('btn-log')?.click();
+                }
+                window.dispatchEvent(new Event('resize'));
+                document.querySelector('.log-agent-chip[data-agent-node-id="${hyperionId}"]')?.click();
+              })();
             `);
-            await new Promise(r => setTimeout(r, 1100));
+            await new Promise(r => setTimeout(r, 2400));
             const img = await appWindow.webContents.capturePage();
             const parentDir = path.dirname(outPng);
             if (!fs.existsSync(parentDir)) {
